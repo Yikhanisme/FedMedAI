@@ -1,0 +1,29 @@
+# Python virtual environment
+.venv/
+env/
+venv/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch checkpoints and model weights
+*.pt
+*.pth
+*.bin
+
+# MedMNIST downloaded dataset files
+.medmnist/
+*.npz
+
+# Logs and monitoring data
+*.log
+experiments/*/logs/
+experiments/*/checkpoints/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
