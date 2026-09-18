@@ -9,7 +9,7 @@ from medmnist import INFO
 from torch.utils.data import DataLoader
 
 
-def blood_mnist_dataloader(batch_size: int = 32, download: bool = True) :
+def get_bloodmnist_datasets(batch_size: int = 32, download: bool = True) :
     """
     Hàm khởi tạo DataLoaders cho bộ dữ liệu BloodMNIST.
     
@@ -18,7 +18,7 @@ def blood_mnist_dataloader(batch_size: int = 32, download: bool = True) :
         download (bool): Có tự động tải dữ liệu nếu chưa có hay không.
         
     Returns:
-        train_loader, val_loader, test_loader, num_classes
+        train_dataset, val_dataset, test_dataset, num_classes
     """
 
     # khai bao dataset
@@ -37,3 +37,17 @@ def blood_mnist_dataloader(batch_size: int = 32, download: bool = True) :
     train_dataset = DataClass(split = 'train', transform = data_transform, download = download)
     val_dataset = DataClass(split = 'val', transform = data_transform, download = download)
     test_dataset = DataClass(split = 'test', transform = data_transform, download = download)
+
+    return train_dataset, val_dataset, test_dataset, num_classes
+
+
+
+def get_bloodmnist_dataloaders(batch_size: int = 32, download: bool = True):
+    """
+    Trả về DataLoaders phục vụ cho Centralized Baseline (Train trực tiếp toàn bộ dữ liệu).
+    """
+    train_dataset, val_dataset, test_dataset, num_classes = get_bloodmnist_datasets(download)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+    val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    return train_loader, val_loader, test_loader, num_classes
