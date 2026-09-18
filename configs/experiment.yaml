@@ -1,2 +1,1 @@
-﻿# configs/experiment.yaml
-
+﻿# Cấu hình tổng quan cho các thí nghiệm FL (số rounds, epochs, learning rate, alpha cho Dirichlet phân chia non-IID)

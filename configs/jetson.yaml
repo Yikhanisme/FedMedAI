@@ -1,2 +1,1 @@
-﻿# configs/jetson.yaml
-
+﻿# Cấu hình phần cứng chuyên biệt khi triển khai trên Jetson Orin/Nano (vd: batch size phù hợp, power mode)
