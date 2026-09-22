@@ -1,21 +1,24 @@
-﻿"""Chứa vòng lặp huấn luyện cục bộ (local training loop). Thực hiện forward/backward pass để cập nhật trọng số mô hình."""
+"""Chứa vòng lặp huấn luyện cục bộ (local training loop). Thực hiện forward/backward pass để cập nhật trọng số mô hình."""
 
-# [FIX 1] Xóa "import torch.utils.data as DataLoader" - không dùng đến, tên bị trùng với class DataLoader thật
+
 import torch
 import torch.nn as nn
 import time
 import copy
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-def train(model, train_loader, optimizer, epochs, device, val_loader=None):
+def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_lr: float = 1e-6):
 
     criterion = nn.CrossEntropyLoss()
     model.train()
 
     start_time = time.time()
 
-    # 1. Khởi tạo Learning Rate Scheduler (Giảm 1 nửa LR nếu Loss không giảm sau 2 epoch)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+    # 1. Khởi tạo Learning Rate Scheduler
+    # - factor=0.5: giảm LR xuống còn 1/2 khi Val Loss không cải thiện
+    # - patience=3: chờ 3 epoch trước khi giảm LR
+    # - min_lr: ngưỡng sàn, LR sẽ không bao giờ giảm xuống dưới giá trị này
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, min_lr=min_lr)
     
     # 2. Khai báo biến cho Early Stopping
     best_loss = float('inf')
