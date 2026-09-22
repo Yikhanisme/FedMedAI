@@ -46,8 +46,10 @@ def get_bloodmnist_dataloaders(batch_size: int = 32, download: bool = True):
     """
     Trả về DataLoaders phục vụ cho Centralized Baseline (Train trực tiếp toàn bộ dữ liệu).
     """
-    train_dataset, val_dataset, test_dataset, num_classes = get_bloodmnist_datasets(download)
+    train_dataset, val_dataset, test_dataset, num_classes = get_bloodmnist_datasets(download = download)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
     test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
     return train_loader, val_loader, test_loader, num_classes
+
+
