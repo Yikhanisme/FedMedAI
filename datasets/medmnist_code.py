@@ -1,8 +1,5 @@
-﻿"""Chịu trách nhiệm tải, tiền xử lý (preprocess) và cung cấp data loader cho các dataset MedMNIST (như BloodMNIST)."""
+"""Chịu trách nhiệm tải, tiền xử lý (preprocess) và cung cấp data loader cho các dataset MedMNIST (như BloodMNIST)."""
 
-
-import medmnist
-from medmnist import info
 import torch
 import torchvision.transforms as transforms
 from medmnist import INFO
@@ -25,7 +22,9 @@ def get_bloodmnist_datasets(batch_size: int = 32, download: bool = True) :
     data_flag = 'bloodmnist'
     info = INFO[data_flag]
     num_classes = len(info['label'])
-    DataClass = getattr(medmnist, info['python_class'])
+    # Import bên trong hàm để tránh circular import (file tên trùng với package)
+    import medmnist as _medmnist
+    DataClass = getattr(_medmnist, info['python_class'])
 
     #Transform data
     data_transform = transforms.Compose([

@@ -1,1 +1,49 @@
-﻿# Cấu hình phần cứng chuyên biệt khi triển khai trên Jetson Orin/Nano (vd: batch size phù hợp, power mode)
+# Cấu hình phần cứng chuyên biệt cho từng loại thiết bị
+# client.py tự resolve device_type từ client_id qua client_registry bên dưới
+
+# ─────────────────────────────────────────────
+# PC / Laptop (mô phỏng FL, tất cả clients trên 1 máy)
+# ─────────────────────────────────────────────
+pc:
+  device_type: pc
+  batch_size: 32
+  num_workers: 2      # PC có đủ CPU cores
+  pin_memory: true    # Tăng tốc GPU transfer trên PC
+
+# ─────────────────────────────────────────────
+# NVIDIA Jetson AGX Orin
+# RAM: 16-32 GB | CPU: 12-core Arm | GPU: Ampere
+# ─────────────────────────────────────────────
+jetson_orin:
+  device_type: jetson_orin
+  batch_size: 32
+  num_workers: 2      # Orin đủ mạnh để dùng 2 workers
+  pin_memory: false   # Jetson dùng Unified Memory (CPU+GPU chung), không cần pin
+
+# ─────────────────────────────────────────────
+# NVIDIA Jetson Nano
+# RAM: 4 GB (shared CPU+GPU) | CPU: 4-core Arm Cortex-A57
+# ─────────────────────────────────────────────
+jetson_nano:
+  device_type: jetson_nano
+  batch_size: 16      # Giảm batch vì RAM giới hạn
+  num_workers: 0      # 0 = main process, tránh OOM trên Nano
+  pin_memory: false   # Unified Memory, không cần pin
+
+# ─────────────────────────────────────────────
+# Client Registry: client_id → device_type
+# Nguồn sự thật duy nhất cho toàn bộ cụm 10 thiết bị.
+# Phải khớp với JETSON_CLIENTS trong scripts/distribute_data.py
+# ─────────────────────────────────────────────
+client_registry:
+  # client_id: device_type
+  0: jetson_orin
+  1: jetson_orin
+  2: jetson_orin
+  3: jetson_orin
+  4: jetson_orin
+  5: jetson_nano
+  6: jetson_nano
+  7: jetson_nano
+  8: jetson_nano
+  9: jetson_nano

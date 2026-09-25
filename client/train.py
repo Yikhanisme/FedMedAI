@@ -23,7 +23,7 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
     # 2. Khai báo biến cho Early Stopping
     best_loss = float('inf')
     patience_counter = 0
-    patience = 5
+    patience = 8
     best_weights = None
     best_epoch = 0        # Lưu lại số thứ tự epoch tốt nhất
     best_val_loss = None  # Val Loss tại epoch tốt nhất
@@ -103,7 +103,7 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
             
             if new_lr < old_lr:
                 print(f"   Val Loss không giảm, tự động giảm Learning Rate xuống {new_lr}")
-                patience_counter = 0
+                
                 
             # --- ÁP DỤNG EARLY STOPPING DỰA TRÊN VAL LOSS ---
             if val_epoch_loss < best_loss:

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from models.cnn import SimpleCNN
-from datasets.medmnist import  get_bloodmnist_datasets, get_bloodmnist_dataloaders
+from datasets.medmnist_code import  get_bloodmnist_datasets, get_bloodmnist_dataloaders
 from client.train import train
 from client.evaluate import evaluate
 import datetime 
@@ -221,7 +221,7 @@ def plot_summary_card(train_metrics, eval_metrics, resource_before, resource_aft
 def run_centralized():
     print("Starting centralized training...")
     batch_size = 32
-    epochs = 50
+    epochs = 100
     learning_rate = 0.001
 
 

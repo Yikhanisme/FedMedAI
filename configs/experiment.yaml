@@ -1,1 +1,69 @@
-﻿# Cấu hình tổng quan cho các thí nghiệm FL (số rounds, epochs, learning rate, alpha cho Dirichlet phân chia non-IID)
+# Cau hinh tong quan cho cac thi nghiem FL
+
+dataset: bloodmnist
+seed: 42
+
+# Partition (Phase 4)
+# Ablation: so luong clients
+num_clients_options: [3, 5, 10]
+
+# Ablation: muc do non-IID (alpha Dirichlet)
+# 1.0 = gan IID | 0.3 = moderately non-IID | 0.1 = highly non-IID
+alpha_values: [1.0, 0.3, 0.1]
+
+# Thu muc luu partition JSON va plots
+partition_save_dir: data/partitions
+
+# FL Hyperparameters (Phase 5+)
+learning_rate: 0.001
+local_epochs: 5
+fl_rounds: 50
+
+# ─────────────────────────────────────────────
+# Deployment Mode
+# ─────────────────────────────────────────────
+# Xac dinh cach he thong chon hardware config cho moi client.
+#
+# simulation   : Tat ca clients chay tren 1 PC (Phase 5).
+#                Moi client dung config 'pc' bat ke client_id.
+#
+# orin_only    : Chi co Jetson Orin (Phase 6).
+#                Moi client dung config 'jetson_orin'.
+#
+# nano_only    : Chi co Jetson Nano (Phase 7).
+#                Moi client dung config 'jetson_nano'.
+#
+# heterogeneous: Orin + Nano cung luc (Phase 8).
+#                Moi client TU DONG resolve qua client_registry trong jetson.yaml.
+#                BAT BUOC phai set active_clients chinh xac.
+#
+deployment_mode: simulation
+
+# ─────────────────────────────────────────────
+# Active Clients
+# ─────────────────────────────────────────────
+# Danh sach client_id THUC TE tham gia FL round nay.
+# QUAN TRONG voi deployment_mode: heterogeneous.
+#
+# Cac vi du:
+#
+# 3 clients thuan Orin (id 0-4 la Orin):
+#   active_clients: [0, 1, 2]
+#
+# 3 clients mixed (2 Orin + 1 Nano):
+#   active_clients: [0, 1, 5]
+#
+# 5 clients mixed (3 Orin + 2 Nano):
+#   active_clients: [0, 1, 2, 5, 6]
+#
+# 5 Orin:
+#   active_clients: [0, 1, 2, 3, 4]
+#
+# 5 Nano:
+#   active_clients: [5, 6, 7, 8, 9]
+#
+# Full 10 (5 Orin + 5 Nano):
+#   active_clients: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+#
+# null = dung voi simulation (khong can thiet).
+active_clients: null
