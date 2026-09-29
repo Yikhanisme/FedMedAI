@@ -48,12 +48,13 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
         total = 0
         for images, labels in train_loader:
             images = images.to(device)
-            labels = labels.squeeze().long().to(device)
+            labels = labels.squeeze(-1).long().to(device)
 
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             running_loss += loss.item() *images.size(0)
@@ -79,7 +80,7 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
             with torch.no_grad():
                 for val_images, val_labels in val_loader:
                     val_images = val_images.to(device)
-                    val_labels = val_labels.squeeze().long().to(device)
+                    val_labels = val_labels.squeeze(-1).long().to(device)
 
                     val_outputs = model(val_images)
                     v_loss = criterion(val_outputs, val_labels)
@@ -124,9 +125,11 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
             print(print_str)
         
     training_time = time.time() - start_time
-    if val_loader is not None and best_weights is not None:
-        print("Đang nạp lại trọng số tốt nhất (Best Weights) để chuẩn bị đi Test...")
-        model.load_state_dict(best_weights)
+    # [LƯU Ý: ĐOẠN CODE DƯỚI ĐÂY DÙNG KHI CHẠY CENTRALIZED]
+    # Trong FL giả lập, chúng ta trả về model của epoch cuối cùng cho Server
+    # if val_loader is not None and best_weights is not None:
+    #     print("Đang nạp lại trọng số tốt nhất (Best Weights) để chuẩn bị đi Test...")
+    #     model.load_state_dict(best_weights)
 
     # [FIX 2] Tách riêng val_loss/val_accuracy ra ngoài để tránh KeyError khi không có val_loader
     metrics = {

@@ -21,7 +21,7 @@ def evaluate(model, test_loader, device):
     with torch.no_grad():
         for images, labels in test_loader:
             images = images.to(device)
-            labels = labels.squeeze().long().to(device)
+            labels = labels.squeeze(-1).long().to(device)
             outputs = model(images)
             loss = criterion(outputs, labels)
             total_loss += loss.item() * images.size(0)

@@ -5,7 +5,7 @@ seed: 42
 
 # Partition (Phase 4)
 # Ablation: so luong clients
-num_clients_options: [3, 5, 10]
+num_clients_options: [10]
 
 # Ablation: muc do non-IID (alpha Dirichlet)
 # 1.0 = gan IID | 0.3 = moderately non-IID | 0.1 = highly non-IID
@@ -67,3 +67,28 @@ deployment_mode: simulation
 #
 # null = dung voi simulation (khong can thiet).
 active_clients: null
+
+
+# ─────────────────────────────────────────────
+# FL Simulation - Phase 5
+# ─────────────────────────────────────────────
+# Thu muc luu ket qua FL
+results_dir: results/simulate_federated
+# Danh sach strategy se chay (xem ALL_STRATEGIES trong server/server.py)
+# De chay het thi de list nay, bot di neu muon test nhanh
+fl_strategies:
+  - fedavg
+  - fedprox
+# Global Early Stopping (theo doi Round, khong phai Epoch)
+early_stopping:
+  patience: 5       # So round khong tang Accuracy thi dung
+  min_delta: 0.001  # Nguong tang toi thieu de tinh la "co cai thien"
+# Global Learning Rate Scheduler (giam LR theo Round)
+lr_scheduler:
+  factor: 0.5       # He so giam: lr_moi = lr_cu * factor
+  patience: 3       # So round khong tang Accuracy thi giam LR
+  min_lr: 0.000001  # Nguong san, LR khong giam duoi muc nay
+# Tai nguyen CPU/GPU cap cho moi client ao trong Flower Simulation
+client_resources:
+  num_cpus: 2
+  num_gpus: 0.5     # Dat 0.5 neu muon chia GPU cho cac client ao
