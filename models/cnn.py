@@ -20,48 +20,93 @@ class ConvBlock(nn.Module):
         return self.relu(self.bn(self.conv(x)))
 
 
-class SimpleCNN(nn.Module):
-    """
-    Kiến trúc mạng CNN tối ưu cho bài toán phân loại ảnh y tế (MedMNIST - BloodMNIST 28x28x3):
+# class SimpleCNN(nn.Module):
+#     """
+#     Kiến trúc mạng CNN tối ưu cho bài toán phân loại ảnh y tế (MedMNIST - BloodMNIST 28x28x3):
     
-    Input (3, 28, 28)
-           ↓
-       Conv Block 1 (3 -> 16, 28x28)
-           ↓
-       Conv Block 2 (16 -> 32, 28x28)
-           ↓
-       Pooling (MaxPool2d 2x2 -> 32, 14x14)
-           ↓
-       Global Average Pooling (GAP -> 32, 1x1)
-           ↓
-       Linear (32 -> num_classes)
-           ↓
-       Output (num_classes = 8)
-    """
-    def __init__(self, in_channels: int = 3, num_classes: int = 8):
-        super(SimpleCNN, self).__init__()
-        # 2 khối Conv liên tiếp
-        self.conv_block1 = ConvBlock(in_channels, 16, kernel_size=3, stride=1, padding=1)
-        self.conv_block2 = ConvBlock(16, 32, kernel_size=3, stride=1, padding=1)
+#     Input (3, 28, 28)
+#            ↓
+#        Conv Block 1 (3 -> 16, 28x28)
+#            ↓
+#        Conv Block 2 (16 -> 32, 28x28)
+#            ↓
+#        Pooling (MaxPool2d 2x2 -> 32, 14x14)
+#            ↓
+#        Global Average Pooling (GAP -> 32, 1x1)
+#            ↓
+#        Linear (32 -> num_classes)
+#            ↓
+#        Output (num_classes = 8)
+#     """
+#     def __init__(self, in_channels: int = 3, num_classes: int = 8):
+#         super(SimpleCNN, self).__init__()
+#         # 2 khối Conv liên tiếp
+#         self.conv_block1 = ConvBlock(in_channels, 16, kernel_size=3, stride=1, padding=1)
+#         self.conv_block2 = ConvBlock(16, 32, kernel_size=3, stride=1, padding=1)
         
-        # Lớp Pooling giảm kích thước không gian (28x28 -> 14x14)
+#         # Lớp Pooling giảm kích thước không gian (28x28 -> 14x14)
+#         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+#         # Global Average Pooling (nén 14x14 về 1x1 cho mỗi channel)
+#         self.gap = nn.AdaptiveAvgPool2d((1, 1))
+        
+#         # 1 tầng phân loại tuyến tính duy nhất
+#         self.fc = nn.Linear(32, num_classes)
+
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         x = self.conv_block1(x)  # [B, 16, 28, 28]
+#         x = self.conv_block2(x)  # [B, 32, 28, 28]
+#         x = self.pool(x)         # [B, 32, 14, 14]
+#         x = self.gap(x)          # [B, 32, 1, 1]
+#         x = torch.flatten(x, 1)  # [B, 32]
+#         x = self.fc(x)           # [B, num_classes]
+#         return x
+
+class SimpleCNN(nn.Module):
+    def __init__(self,in_channels: int = 3, num_classes: int = 8):
+        super().__init__()
+
+        # Conv Block 1: Input 3 x 28 x 28 -> Output 32 x 28 x 28
+        self.conv_block1 = nn.Sequential(
+            nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=32,
+                kernel_size=3,
+                padding=1,
+            ),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+        )
+
+        # Conv Block 2: Input 32 x 28 x 28 -> Output 64 x 28 x 28
+        self.conv_block2 = nn.Sequential(
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=64,
+                kernel_size=3,
+                padding=1,
+            ),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+        )
+
+        # Max Pooling: 64 x 28 x 28 -> 64 x 14 x 14
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        
-        # Global Average Pooling (nén 14x14 về 1x1 cho mỗi channel)
-        self.gap = nn.AdaptiveAvgPool2d((1, 1))
-        
-        # 1 tầng phân loại tuyến tính duy nhất
-        self.fc = nn.Linear(32, num_classes)
+
+        # Global Average Pooling: 64 x 14 x 14 -> 64 x 1 x 1
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # Fully Connected Layer: 64 -> num_classes
+        self.fc = nn.Linear(64, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv_block1(x)  # [B, 16, 28, 28]
-        x = self.conv_block2(x)  # [B, 32, 28, 28]
-        x = self.pool(x)         # [B, 32, 14, 14]
-        x = self.gap(x)          # [B, 32, 1, 1]
-        x = torch.flatten(x, 1)  # [B, 32]
-        x = self.fc(x)           # [B, num_classes]
+        x = self.conv_block1(x)
+        x = self.conv_block2(x)
+        x = self.pool(x)
+        x = self.global_avg_pool(x)
+        x = torch.flatten(x, start_dim=1)
+        x = self.fc(x)
         return x
-
 
 def get_parameters(model: nn.Module) -> List[np.ndarray]:
     """Trích xuất trọng số mô hình PyTorch thành danh sách các mảng NumPy."""
