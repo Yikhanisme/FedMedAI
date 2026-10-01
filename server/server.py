@@ -13,10 +13,7 @@ from flwr.server.strategy import (
 # Danh sach day du de dung trong run_simulation.py
 ALL_STRATEGIES = [
     "fedavg",       # Baseline chuẩn
-    "fedavgm",      # FedAvg + Momentum
     "fedprox",      # Tốt nhất cho Non-IID
-    "fedmedian",    # Robust aggregation
-    "fedtrimmedavg" # Robust aggregation
 ]
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:

@@ -5,7 +5,7 @@ seed: 42
 
 # Partition (Phase 4)
 # Ablation: so luong clients
-num_clients_options: [10]
+num_clients_options: [3,5,10]
 
 # Ablation: muc do non-IID (alpha Dirichlet)
 # 1.0 = gan IID | 0.3 = moderately non-IID | 0.1 = highly non-IID
