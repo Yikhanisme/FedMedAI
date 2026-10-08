@@ -119,6 +119,32 @@ def set_parameters(model: nn.Module, parameters: List[np.ndarray]) -> None:
     state_dict = {k: torch.tensor(v) for k, v in params_dict}
     model.load_state_dict(state_dict, strict=True)
 
+def get_parameters_fedbn(model: nn.Module) -> List[np.ndarray]:
+    """
+    FedBN: Chỉ trích xuất các tham số KHÔNG phải BatchNorm.
+    BN params (weight, bias, running_mean, running_var, num_batches_tracked)
+    sẽ được giữ lại cục bộ tại mỗi client.
+    """
+    return [
+        val.cpu().numpy()
+        for name, val in model.state_dict().items()
+        if "bn" not in name
+    ]
+def set_parameters_fedbn(model: nn.Module, parameters: List[np.ndarray]) -> None:
+    """
+    FedBN: Chỉ nạp các tham số KHÔNG phải BatchNorm vào model.
+    Các tham số BN của client sẽ không bị ghi đè bởi Server.
+    """
+    non_bn_keys = [
+        name for name in model.state_dict().keys()
+        if "bn" not in name
+    ]
+    state_dict = model.state_dict()  # giữ nguyên BN params cục bộ
+    state_dict.update({
+        k: torch.tensor(v)
+        for k, v in zip(non_bn_keys, parameters)
+    })
+    model.load_state_dict(state_dict, strict=True)
 
 if __name__ == "__main__":
     # Chạy kiểm thử kiến trúc mô hình

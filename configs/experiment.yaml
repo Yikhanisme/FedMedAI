@@ -79,6 +79,7 @@ results_dir: results/simulate_federated
 fl_strategies:
   - fedavg
   - fedprox
+  - fedbn
 # Global Early Stopping (theo doi Round, khong phai Epoch)
 early_stopping:
   patience: 5       # So round khong tang Accuracy thi dung
@@ -91,4 +92,4 @@ lr_scheduler:
 # Tai nguyen CPU/GPU cap cho moi client ao trong Flower Simulation
 client_resources:
   num_cpus: 2
-  num_gpus: 0.5     # Dat 0.5 neu muon chia GPU cho cac client ao
+  num_gpus: 0     # Dat 0.5 neu muon chia GPU cho cac client ao

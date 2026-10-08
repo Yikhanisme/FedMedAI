@@ -12,8 +12,9 @@ from flwr.server.strategy import (
 
 # Danh sach day du de dung trong run_simulation.py
 ALL_STRATEGIES = [
-    "fedavg",       # Baseline chuẩn
-    "fedprox",      # Tốt nhất cho Non-IID
+    "fedavg",       
+    "fedprox",      
+    "fedbn",
 ]
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
@@ -58,6 +59,9 @@ def get_strategy(strategy_name: str, num_clients: int,
 
     elif name == "fedprox":
         return FedProx(**base, proximal_mu=proximal_mu)
+    
+    elif name == "fedbn":
+        return FedAvg(**base)
     
     else:
         raise ValueError(

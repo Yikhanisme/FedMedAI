@@ -1,7 +1,0 @@
-{
-    "gpu_available": true,
-    "gpu_name": "NVIDIA GeForce RTX 3050",
-    "gpu_total_memory_gb": 8.0,
-    "cuda_version": "12.4",
-    "cudnn_version": 90100
-}

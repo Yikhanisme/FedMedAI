@@ -1,68 +1,97 @@
-Dưới đây là bản thảo cho tệp README.md. Bản hướng dẫn này được thiết kế với văn phong kỹ thuật chuẩn mực, rõ ràng, giúp bất kỳ ai đọc vào cũng có thể tự tay thiết lập và vận hành hệ thống phần cứng một cách trơn tru.
+# FedMedAI: Federated Learning for Medical Image Diagnostics
 
-# Triển Khai Federated Learning  Trên Cụm NVIDIA Jetson
+This research project focuses on building and evaluating a Federated Learning (FL) system using the **Flower** framework and **PyTorch**. The primary task is medical image classification using the [BloodMNIST](https://medmnist.com/) dataset (classifying blood cells into 8 distinct categories).
 
-Tài liệu này hướng dẫn chi tiết quy trình triển khai thuật toán Học liên kết (Federated Learning) sử dụng framework Flower, huấn luyện mạng CNN trên bộ dữ liệu y tế BloodMNIST với các thiết bị biên là NVIDIA Jetson.
-
----
-
-## 1. Yêu Cầu Hệ Thống
-
-| Thành phần | Yêu cầu chi tiết |
-| --- | --- |
-| **Máy chủ (Server)** | 01 Laptop/PC (Windows/Linux/macOS) |
-| **Máy khách (Clients)** | 03 bo mạch NVIDIA Jetson Nano/Orin |
-| **Hạ tầng mạng** | 01 Router Wi-Fi/LAN nội bộ |
-| **Thiết bị phụ trợ** | 01 USB Flash Drive |
-| **Phần mềm lõi** | Python 3.8+, thư viện `flwr`, `medmnist`, `scikit-learn` |
-| **Môi trường Jetson** | PyTorch phiên bản hỗ trợ CUDA (Tối ưu GPU Maxwell) |
-
-## 2. Tiền Xử Lý Dữ Liệu Ngoại Tuyến (Laptop)
-
-* Chạy tệp mã nguồn `prepare_data.py` trên Laptop để tự động tải và chia bộ dữ liệu BloodMNIST theo phân phối Dirichlet.
-* Kiểm tra thư mục `data` vừa được tạo ra để đảm bảo có đủ các tệp nhị phân dữ liệu cho từng máy khách.
-* Chép toàn bộ thư mục `data` cùng hai tệp mã nguồn là `common.py` và `client.py` vào USB.
-
-## 3. Triển Khai Vật Lý (Thiết Bị Jetson)
-
-* Cắm USB vào từng bo mạch Jetson và tạo một thư mục dự án cục bộ mới.
-* Chép hai tệp `common.py` và `client.py` vào thư mục dự án vừa tạo trên Jetson.
-* Chép đúng thư mục dữ liệu cá nhân hóa (ví dụ: chỉ chép `data/client_0`) từ USB sang thiết bị Jetson số 0 để đảm bảo tính phân tán dữ liệu khắt khe.
-* Mở terminal trên thiết bị Jetson và chạy lệnh cài đặt các thư viện cần thiết nếu môi trường chưa có sẵn.
-
-Làm việc với phần cứng nhúng (như Jetson hay Raspberry Pi) lần đầu tiên đúng là sẽ hơi bỡ ngỡ vì chúng chạy hệ điều hành Ubuntu thuần túy và thường giao tiếp qua dòng lệnh. Tuy nhiên, bản chất nó chỉ là một chiếc máy tính thu nhỏ.
-
-Để bạn hoàn toàn tự tin khi thao tác thật, mình đã viết lại Phần 4 "cầm tay chỉ việc" chi tiết nhất có thể. Bạn có thể thay thế phần này vào tệp README:
+The system is designed to train a lightweight CNN (`SimpleCNN`) across three different environments:
+1. **Centralized Baseline**: Traditional centralized training (used as an upper-bound benchmark).
+2. **Simulated Federated Learning**: Simulating an FL network locally on a PC using Ray.
+3. **Real-world Deployment**: Deploying physical FL over a network between a PC (Server) and an NVIDIA Jetson (Client).
 
 ---
 
-## 4. Vận Hành Hệ Thống Xuyên Mạng (Live Execution) chi tiết
+## Part 1: Centralized Baseline
 
-**4.1. Cố định địa chỉ mạng cho Server (Laptop)**
+Centralized training gathers all data onto a single machine. The purpose of this phase is to establish the upper-bound performance that the `SimpleCNN` model can achieve on the BloodMNIST dataset without data fragmentation.
 
-* Đảm bảo Laptop và tất cả các máy Jetson đều đang kết nối vào chung một cục phát Wi-Fi.
-* Trên Laptop (Windows), mở ứng dụng **Command Prompt** (cmd) và gõ lệnh `ipconfig`.
-* Tìm dòng **IPv4 Address** (ví dụ: `192.168.1.15`). Hãy ghi nhớ dãy số này vì đây là "tọa độ" để các máy Jetson tìm về Laptop.
-* Tắt tạm thời Windows Defender Firewall (hoặc phần mềm diệt virus) trên Laptop để các thiết bị bên ngoài có thể gửi dữ liệu vào cổng 8080.
+### Usage
+```bash
+python -m experiments.train_centralized
+```
+Hyperparameters (epochs, learning rate, etc.) are managed globally in `configs/experiment.yaml`.
 
-**4.2. Giao tiếp và sửa mã nguồn trên Jetson**
-Vì Jetson là một máy tính độc lập, bạn có hai cách để thao tác với nó:
+### Results Achieved
+*Training Setup: 100 Epochs, Early Stopping, Learning Rate Scheduler*
 
-* **Cách dễ nhất:** Cắm một màn hình vào cổng HDMI của Jetson, cắm chuột và bàn phím qua cổng USB. Thao tác trên giao diện màn hình y hệt như dùng một chiếc máy tính bình thường.
-* **Cách chuyên nghiệp (SSH):** Mở terminal trên Laptop và gõ lệnh `ssh tên_đăng_nhập@IP_của_Jetson` để điều khiển Jetson từ xa (không cần cắm thêm màn hình ngoài).
-* Bất kể dùng cách nào, hãy mở terminal trên Jetson, đi đến thư mục chứa tệp `client.py` và dùng lệnh chỉnh sửa văn bản (ví dụ: gõ `nano client.py`).
-* Tìm dòng khai báo địa chỉ máy chủ và thay thế bằng IP của Laptop mà bạn vừa lấy ở Bước 4.1 (ví dụ: `server_address="192.168.1.15:8080"`). Bấm Ctrl+O, Enter để lưu và Ctrl+X để thoát. Lặp lại bước này cho tất cả các máy Jetson.
+* **Training Time:** ~68.12 seconds (On a high-performance PC)
+* **Accuracy:** 90.41%
+* **Final Loss:** 0.2789
 
-**4.3. Thứ tự khởi chạy hệ thống (Cực kỳ quan trọng)**
+**Precision, Recall, and F1-Score (Macro Avg):**
+* **Precision:** 89.28%
+* **Recall:** 89.47%
+* **F1-Score:** 89.28%
 
-* **Khởi động Trạm Chỉ Huy:** Trên Laptop, mở terminal trong thư mục dự án và gõ lệnh: `python server.py`. Màn hình sẽ hiện thông báo máy chủ đang lắng nghe trên cổng 8080 và chặn luồng (đứng yên) để chờ.
-* **Đánh thức các Điểm Biên:** Lần lượt di chuyển sang các máy Jetson, mở terminal và gõ lệnh: `python client.py`.
-* Khi máy Jetson cuối cùng gõ xong lệnh, Server sẽ nhận diện đủ số lượng thiết bị và ngay lập tức gửi tập lệnh bắt đầu Vòng 1.
-
-**4.4. Theo dõi diễn biến huấn luyện**
-
-* Trên màn hình của các máy Jetson, bạn sẽ thấy thông báo nhận trọng số và bắt đầu tải các batch dữ liệu (thể hiện qua thanh tiến trình Train/Loss). Lõi tản nhiệt của Jetson sẽ bắt đầu quay mạnh vì GPU đang chạy hết công suất.
-* Trên màn hình Laptop, sau mỗi vòng giao tiếp, hệ thống sẽ in ra thông số độ chính xác toàn cục (Global Metrics) và dòng chữ thông báo đã lưu tệp `.pth`.
+**Class-wise Metrics:**
+| Label | Cell Type | Precision | Recall | F1-Score |
+|---|---|---|---|---|
+| 0 | Basophil | 92.17% | 87.60% | 89.83% |
+| 1 | Eosinophil | 92.83% | 94.46% | 93.63% |
+| 2 | Erythroblast | 90.72% | 88.08% | 89.38% |
+| 3 | Immature Granulocytes | 92.20% | 88.75% | 90.44% |
+| 4 | Lymphocyte | 86.81% | 86.44% | 86.63% |
+| 5 | Monocyte | 88.29% | 93.91% | 91.01% |
+| 6 | Neutrophil | 89.41% | 92.42% | 90.89% |
+| 7 | Platelet | 81.82% | 84.11% | 82.95% |
 
 ---
 
+## Part 2: Simulated Federated Learning
+
+This phase uses the Flower Virtual Client Engine (backed by Ray) to spin up virtual clients. Data is partitioned in a Non-IID fashion using a Dirichlet distribution (controlled by the $\alpha$ parameter) to simulate real-world medical data imbalances across different hospitals.
+
+Supported FL Strategies: `FedAvg`, `FedProx`, `FedBN`.
+
+### Usage
+Generate data partitions first (creates `.json` partition files):
+```bash
+python -m datasets.partition
+```
+
+Run all experimental configurations defined in `experiment.yaml`:
+```bash
+python -m experiments.run_simulation --all
+```
+Run a specific configuration:
+```bash
+python -m experiments.run_simulation --num_clients 10 --alpha 0.3 --strategy fedprox
+```
+A comprehensive evaluation report is automatically generated as a CSV at `results/simulate_federated/comparison_table.csv`.
+
+### Results (To be updated)
+*Simulation results will be populated here once experiments are completed.*
+
+---
+
+## Part 3: Real-world NVIDIA Jetson Deployment
+
+Deploying the physical FL architecture over a LAN/Wi-Fi connection:
+* A PC acts as the Global Server, aggregating model weights via gRPC.
+* NVIDIA Jetson boards (Nano/Orin) act as Edge Clients performing local training.
+
+*(For detailed instructions on IP configuration and data distribution, see `JETSON_GUIDE.md`)*
+
+### Usage
+**Step 1: Start the Server on the PC**
+```bash
+python -m experiments.run_server --strategy fedavg --num_clients 1 --alpha 1.0
+```
+
+**Step 2: Start the Client on the Jetson**
+Wait for the server to display a listening status, then execute on the Jetson:
+```bash
+python experiments/run_jetson_client.py --server_ip <PC_IP_ADDRESS> --client_id 0
+```
+The process runs autonomously while tracking communication costs (Upload/Download MB) and hardware utilization (Thermal/GPU peaks).
+
+### Results (To be updated)
+*Empirical metrics regarding edge hardware utilization, bandwidth consumption, and FL convergence will be added here.*

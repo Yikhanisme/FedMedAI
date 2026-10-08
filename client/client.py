@@ -6,6 +6,7 @@ from models.cnn import get_parameters, set_parameters, SimpleCNN
 from flwr.common import Context
 from client.train import train
 from client.evaluate import evaluate
+from models.cnn import get_parameters_fedbn, set_parameters_fedbn
 
 
 def make_client_fn(train_dataset, val_dataset, test_dataset,
@@ -96,3 +97,68 @@ class FlowerClient(fl.client.NumPyClient):
             "recall":    float(eval_metrics["recall"]),
             "f1_score":  float(eval_metrics["f1_score"]),
         }   
+
+
+
+class FedBNFlowerClient(fl.client.NumPyClient):
+    """
+    Client cho FedBN: BN params được giữ lại cục bộ,
+    chỉ các tham số Conv và FC mới được gửi lên Server.
+    """
+    def __init__(self, net, train_loader, val_loader,
+                 test_loader, local_epochs, lr, device):
+        self.net          = net
+        self.train_loader = train_loader
+        self.val_loader   = val_loader
+        self.test_loader  = test_loader
+        self.local_epochs = local_epochs
+        self.lr           = lr
+        self.device       = device
+    def get_parameters(self, config):
+        return get_parameters_fedbn(self.net)   # ← Bỏ BN params
+    def fit(self, parameters, config):
+        set_parameters_fedbn(self.net, parameters)  # ← Không ghi đè BN
+        current_lr = config.get("lr", self.lr)
+        optimizer  = torch.optim.Adam(self.net.parameters(), lr=current_lr)
+        train(
+            model=self.net,
+            train_loader=self.train_loader,
+            optimizer=optimizer,
+            epochs=self.local_epochs,
+            device=self.device,
+            val_loader=self.val_loader
+        )
+        return get_parameters_fedbn(self.net), len(self.train_loader.dataset), {}
+    def evaluate(self, parameters, config):
+        set_parameters_fedbn(self.net, parameters)
+        loss, eval_metrics = evaluate(self.net, self.test_loader, self.device)
+        return loss, len(self.test_loader.dataset), {
+            "accuracy":  float(eval_metrics["accuracy"]),
+            "precision": float(eval_metrics["precision"]),
+            "recall":    float(eval_metrics["recall"]),
+            "f1_score":  float(eval_metrics["f1_score"]),
+        }
+def make_fedbn_client_fn(train_dataset, val_dataset, test_dataset,
+                         partition, local_epochs, lr, device):
+    """Factory function cho FedBN — tương tự make_client_fn."""
+    from torch.utils.data import DataLoader, Subset
+    def client_fn(context: Context) -> fl.client.Client:
+        client_id   = int(context.node_config["partition-id"])
+        train_subset = Subset(train_dataset, partition[client_id])
+        train_loader = DataLoader(train_subset, batch_size=32,
+                                  shuffle=True, num_workers=0)
+        val_loader   = DataLoader(val_dataset,  batch_size=32,
+                                  shuffle=False, num_workers=0)
+        test_loader  = DataLoader(test_dataset, batch_size=32,
+                                  shuffle=False, num_workers=0)
+        net = SimpleCNN(in_channels=3, num_classes=8).to(device)
+        return FedBNFlowerClient(
+            net=net,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            local_epochs=local_epochs,
+            lr=lr,
+            device=device,
+        ).to_client()
+    return client_fn
