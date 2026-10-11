@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import List
+from collections import OrderedDict
 import numpy as np
 
     
@@ -67,28 +68,19 @@ class SimpleCNN(nn.Module):
         super().__init__()
 
         # Conv Block 1: Input 3 x 28 x 28 -> Output 32 x 28 x 28
-        self.conv_block1 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=in_channels,
-                out_channels=32,
-                kernel_size=3,
-                padding=1,
-            ),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-        )
+        self.conv_block1 = nn.Sequential(OrderedDict([
+            ('conv', nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=3, padding=1)),
+            ('bn', nn.BatchNorm2d(32)), # Tên 'bn' sẽ hiện trong state_dict
+            ('relu', nn.ReLU())
+        ]))
 
         # Conv Block 2: Input 32 x 28 x 28 -> Output 64 x 28 x 28
-        self.conv_block2 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=32,
-                out_channels=64,
-                kernel_size=3,
-                padding=1,
-            ),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-        )
+        self.conv_block2 = nn.Sequential(OrderedDict([
+            ('conv', nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)),
+            ('bn', nn.BatchNorm2d(64)), # Tên 'bn' sẽ hiện trong state_dict
+            ('relu', nn.ReLU())
+        ]))
+        
 
         # Max Pooling: 64 x 28 x 28 -> 64 x 14 x 14
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)

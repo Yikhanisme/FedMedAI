@@ -3,39 +3,50 @@
 import torch
 import flwr as fl
 from models.cnn import get_parameters, set_parameters, SimpleCNN
+from models.cnn_570k import CNN570K
 from flwr.common import Context
 from client.train import train
 from client.evaluate import evaluate
 from models.cnn import get_parameters_fedbn, set_parameters_fedbn
 
 
+def _make_optimizer(net, optimizer_type, lr, momentum=0.9, weight_decay=1e-4):
+    """Khởi tạo optimizer: SGD (theo FedSLD paper) hoặc Adam (theo BloodMNIST)."""
+    if optimizer_type == "sgd":
+        return torch.optim.SGD(
+            net.parameters(),
+            lr=lr,
+            momentum=momentum,
+            weight_decay=weight_decay
+        )
+    return torch.optim.Adam(net.parameters(), lr=lr)
+
+
 def make_client_fn(train_dataset, val_dataset, test_dataset,
-                   partition, local_epochs, lr, device):
+                   partition, local_epochs, lr, device,
+                   num_classes=8, batch_size=32,
+                   optimizer_type="adam", momentum=0.9,
+                   model_type="20k"):
     """
     Factory function: trả về hàm client_fn dùng cho Flower Simulation.
-
-    Flower sẽ gọi client_fn(cid) mỗi khi cần tạo 1 client ảo.
-    partition: List[List[int]] — danh sách indices cho từng client.
     """
     from torch.utils.data import DataLoader, Subset
 
     def client_fn(context: Context) -> fl.client.Client:
         client_id = int(context.node_config["partition-id"])
 
-        # Tạo Subset từ indices đã chia ở Phase 4
-        train_subset  = Subset(train_dataset, partition[client_id])
-        train_loader  = DataLoader(train_subset, batch_size=32,
-                                   shuffle=True, num_workers=0)
+        train_subset = Subset(train_dataset, partition[client_id])
+        train_loader = DataLoader(train_subset, batch_size=batch_size,
+                                  shuffle=True, num_workers=0)
+        val_loader   = DataLoader(val_dataset,  batch_size=batch_size,
+                                  shuffle=False, num_workers=0)
+        test_loader  = DataLoader(test_dataset, batch_size=batch_size,
+                                  shuffle=False, num_workers=0)
 
-        # Val loader: dùng chung 1 val set (mỗi client đánh giá trên val gốc)
-        val_loader    = DataLoader(val_dataset,  batch_size=32,
-                                   shuffle=False, num_workers=0)
-
-        test_loader   = DataLoader(test_dataset, batch_size=32,
-                                   shuffle=False, num_workers=0)
-
-        # Mỗi client có model riêng (sẽ nhận trọng số từ Server khi fit)
-        net = SimpleCNN(in_channels=3, num_classes=8).to(device)
+        if model_type == "570k":
+            net = CNN570K(in_channels=3, num_classes=num_classes).to(device)
+        else:
+            net = SimpleCNN(in_channels=3, num_classes=num_classes).to(device)
 
         return FlowerClient(
             net=net,
@@ -44,7 +55,9 @@ def make_client_fn(train_dataset, val_dataset, test_dataset,
             test_loader=test_loader,
             local_epochs=local_epochs,
             lr=lr,
-            device=device
+            device=device,
+            optimizer_type=optimizer_type,
+            momentum=momentum,
         ).to_client()
 
     return client_fn
@@ -52,52 +65,57 @@ def make_client_fn(train_dataset, val_dataset, test_dataset,
 
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, net, train_loader, val_loader,
-                 test_loader, local_epochs, lr, device):
-        self.net          = net
-        self.train_loader = train_loader
-        self.val_loader   = val_loader
-        self.test_loader  = test_loader
-        self.local_epochs = local_epochs
-        self.lr           = lr
-        self.device       = device
+                 test_loader, local_epochs, lr, device,
+                 optimizer_type="adam", momentum=0.9):
+        self.net            = net
+        self.train_loader   = train_loader
+        self.val_loader     = val_loader
+        self.test_loader    = test_loader
+        self.local_epochs   = local_epochs
+        self.lr             = lr
+        self.device         = device
+        self.optimizer_type = optimizer_type
+        self.momentum       = momentum
 
     def get_parameters(self, config):
         return get_parameters(self.net)
 
     def fit(self, parameters, config):
-        """Nhan trong so tu Server -> train cuc bo -> gui ve."""
+        """Nhận trọng số từ Server -> train cục bộ -> gửi về."""
         set_parameters(self.net, parameters)
 
-        # Doc LR tu config Server (neu Server gui xuong GlobalLRScheduler)
-        # Neu khong co, dung LR mac dinh khi khoi tao
-        current_lr = config.get("lr", self.lr)
-    
-        optimizer = torch.optim.Adam(self.net.parameters(), lr=current_lr)
+        current_lr  = config.get("lr", self.lr)
+        proximal_mu = float(config.get("proximal_mu", 0.0))
+
+        # Lưu bản sao trọng số global đầu round cho FedProx
+        global_params = None
+        if proximal_mu > 0.0:
+            global_params = [p.detach().clone() for p in self.net.parameters()]
+
+        optimizer = _make_optimizer(self.net, self.optimizer_type,
+                                    current_lr, self.momentum)
         metrics = train(
             model=self.net,
             train_loader=self.train_loader,
             optimizer=optimizer,
             epochs=self.local_epochs,
             device=self.device,
-            val_loader=self.val_loader
+            val_loader=self.val_loader,
+            proximal_mu=proximal_mu,
+            global_params=global_params,
         )
         return get_parameters(self.net), len(self.train_loader.dataset), {}
 
     def evaluate(self, parameters, config):
-        """Nhan trong so tu Server -> danh gia tren test set."""
+        """Nhận trọng số từ Server -> đánh giá trên test set."""
         set_parameters(self.net, parameters)
         loss, eval_metrics = evaluate(self.net, self.test_loader, self.device)
-        # Chi lay cac gia tri scalar (float) ma Flower co the aggregate duoc.
-        # Cac gia tri dang List (precision_class, confusion_matrix)
-        # Flower khong ho tro aggregate truc tiep -> bo qua o day,
-        # se xu ly rieng trong run_simulation.py neu can.
         return loss, len(self.test_loader.dataset), {
             "accuracy":  float(eval_metrics["accuracy"]),
             "precision": float(eval_metrics["precision"]),
             "recall":    float(eval_metrics["recall"]),
             "f1_score":  float(eval_metrics["f1_score"]),
-        }   
-
+        }
 
 
 class FedBNFlowerClient(fl.client.NumPyClient):
@@ -106,29 +124,45 @@ class FedBNFlowerClient(fl.client.NumPyClient):
     chỉ các tham số Conv và FC mới được gửi lên Server.
     """
     def __init__(self, net, train_loader, val_loader,
-                 test_loader, local_epochs, lr, device):
-        self.net          = net
-        self.train_loader = train_loader
-        self.val_loader   = val_loader
-        self.test_loader  = test_loader
-        self.local_epochs = local_epochs
-        self.lr           = lr
-        self.device       = device
+                 test_loader, local_epochs, lr, device,
+                 optimizer_type="adam", momentum=0.9):
+        self.net            = net
+        self.train_loader   = train_loader
+        self.val_loader     = val_loader
+        self.test_loader    = test_loader
+        self.local_epochs   = local_epochs
+        self.lr             = lr
+        self.device         = device
+        self.optimizer_type = optimizer_type
+        self.momentum       = momentum
+
     def get_parameters(self, config):
-        return get_parameters_fedbn(self.net)   # ← Bỏ BN params
+        return get_parameters_fedbn(self.net)   # Bỏ BN params
+
     def fit(self, parameters, config):
-        set_parameters_fedbn(self.net, parameters)  # ← Không ghi đè BN
-        current_lr = config.get("lr", self.lr)
-        optimizer  = torch.optim.Adam(self.net.parameters(), lr=current_lr)
+        set_parameters_fedbn(self.net, parameters)  # Không ghi đè BN cục bộ
+
+        current_lr  = config.get("lr", self.lr)
+        proximal_mu = float(config.get("proximal_mu", 0.0))
+
+        global_params = None
+        if proximal_mu > 0.0:
+            global_params = [p.detach().clone() for p in self.net.parameters()]
+
+        optimizer = _make_optimizer(self.net, self.optimizer_type,
+                                    current_lr, self.momentum)
         train(
             model=self.net,
             train_loader=self.train_loader,
             optimizer=optimizer,
             epochs=self.local_epochs,
             device=self.device,
-            val_loader=self.val_loader
+            val_loader=self.val_loader,
+            proximal_mu=proximal_mu,
+            global_params=global_params,
         )
         return get_parameters_fedbn(self.net), len(self.train_loader.dataset), {}
+
     def evaluate(self, parameters, config):
         set_parameters_fedbn(self.net, parameters)
         loss, eval_metrics = evaluate(self.net, self.test_loader, self.device)
@@ -138,20 +172,29 @@ class FedBNFlowerClient(fl.client.NumPyClient):
             "recall":    float(eval_metrics["recall"]),
             "f1_score":  float(eval_metrics["f1_score"]),
         }
+
+
 def make_fedbn_client_fn(train_dataset, val_dataset, test_dataset,
-                         partition, local_epochs, lr, device):
+                         partition, local_epochs, lr, device,
+                         num_classes=8, batch_size=32,
+                         optimizer_type="adam", momentum=0.9,
+                         model_type="20k"):
     """Factory function cho FedBN — tương tự make_client_fn."""
     from torch.utils.data import DataLoader, Subset
+
     def client_fn(context: Context) -> fl.client.Client:
-        client_id   = int(context.node_config["partition-id"])
+        client_id    = int(context.node_config["partition-id"])
         train_subset = Subset(train_dataset, partition[client_id])
-        train_loader = DataLoader(train_subset, batch_size=32,
+        train_loader = DataLoader(train_subset, batch_size=batch_size,
                                   shuffle=True, num_workers=0)
-        val_loader   = DataLoader(val_dataset,  batch_size=32,
+        val_loader   = DataLoader(val_dataset,  batch_size=batch_size,
                                   shuffle=False, num_workers=0)
-        test_loader  = DataLoader(test_dataset, batch_size=32,
+        test_loader  = DataLoader(test_dataset, batch_size=batch_size,
                                   shuffle=False, num_workers=0)
-        net = SimpleCNN(in_channels=3, num_classes=8).to(device)
+        if model_type == "570k":
+            net = CNN570K(in_channels=3, num_classes=num_classes).to(device)
+        else:
+            net = SimpleCNN(in_channels=3, num_classes=num_classes).to(device)
         return FedBNFlowerClient(
             net=net,
             train_loader=train_loader,
@@ -160,5 +203,8 @@ def make_fedbn_client_fn(train_dataset, val_dataset, test_dataset,
             local_epochs=local_epochs,
             lr=lr,
             device=device,
+            optimizer_type=optimizer_type,
+            momentum=momentum,
         ).to_client()
+
     return client_fn

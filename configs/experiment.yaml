@@ -93,3 +93,32 @@ lr_scheduler:
 client_resources:
   num_cpus: 2
   num_gpus: 0     # Dat 0.5 neu muon chia GPU cho cac client ao
+
+  # ─────────────────────────────────────────────────────────────
+# FedSLD Reproduction Setup
+# Dùng với: python -m experiments.run_fedsld_repro
+# ─────────────────────────────────────────────────────────────
+fedsld_setup:
+  datasets:
+    - pathmnist
+    - organmnist_axial
+  num_clients: 12
+  local_epochs: 5
+  batch_size: 256
+  optimizer: sgd
+  learning_rate: 0.01
+  momentum: 0.9
+  weight_decay: 0.0001
+  partition_settings:
+    practical_noniid:
+      fl_rounds: 80
+    pathological_noniid:
+      fl_rounds: 160
+  fl_strategies:
+    - fedavg
+    - fedprox
+  early_stopping:
+    enabled: false
+    patience: 10
+    min_delta: 0.001
+  results_dir: results/fedsld_reproduction

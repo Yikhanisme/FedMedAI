@@ -7,7 +7,8 @@ import time
 import copy
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_lr: float = 1e-6):
+def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_lr: float = 1e-6,
+          proximal_mu: float = 0.0, global_params: list = None):
 
     criterion = nn.CrossEntropyLoss()
     model.train()
@@ -53,6 +54,14 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
+
+            # Proximal regularization term cho FedProx: (mu / 2) * ||w - w_t||^2
+            if proximal_mu > 0.0 and global_params is not None:
+                prox_term = 0.0
+                for w, w_t in zip(model.parameters(), global_params):
+                    prox_term += ((w - w_t) ** 2).sum()
+                loss += (proximal_mu / 2.0) * prox_term
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -103,7 +112,7 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
             new_lr = optimizer.param_groups[0]['lr']
             
             if new_lr < old_lr:
-                print(f"   Val Loss không giảm, tự động giảm Learning Rate xuống {new_lr}")
+                print(f"   Val loss did not improve, reducing LR to {new_lr}")
                 
                 
             # --- ÁP DỤNG EARLY STOPPING DỰA TRÊN VAL LOSS ---
@@ -118,7 +127,7 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
-                    print(f"--- Early Stopping kích hoạt ở Epoch {epoch + 1}! Val Loss không giảm trong {patience} vòng liên tiếp. ---")
+                    print(f"--- Early Stopping triggered at Epoch {epoch + 1}! ---")
                     break
         else:
             # Nếu không có tập Val, chỉ in kết quả của Train
