@@ -144,7 +144,7 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
             rec = metrics_agg.get("recall",    0.0)
             f1  = metrics_agg.get("f1_score",  0.0)
             print(f"  [Round {server_round:3d}/{num_rounds}] "
-                  f"BTA={bta:.4f} BMCTA={bmcta:.4f} "
+                  f"BTA={bta:.4f} "
                   f"Pre={pre:.4f} Rec={rec:.4f} F1={f1:.4f} ({t:.1f}s)")
 
             if early_stopper and not early_stopper.update(server_round, bta):
@@ -207,7 +207,7 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
     with open(out_dir / "results.json", "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
 
-    print(f"\n  [COMPLETED] -> BTA = {result['BTA']:.4f} | BMCTA = {result['BMCTA']:.4f}")
+    print(f"\n  [COMPLETED] -> BTA = {result['BTA']:.4f}")
     print(f"  [SAVED]     -> {out_dir / 'results.json'}")
     return result
 
@@ -247,7 +247,7 @@ def main():
             "dataset", "partition_method", "strategy", "model",
             "num_params", "model_size_mb", "total_comm_mb",
             "total_time_min", "total_time_s",
-            "BTA", "BMCTA", "fl_rounds_actual", "optimizer", "learning_rate"
+            "BTA", "fl_rounds_actual", "optimizer", "learning_rate"
         ]
         file_exists = csv_path.exists()
         with open(csv_path, "a" if file_exists else "w", newline="", encoding="utf-8") as f:

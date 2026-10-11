@@ -1,3 +1,3 @@
-dataset,partition_method,strategy,model,num_params,model_size_mb,total_comm_mb,total_time_min,total_time_s,BTA,BMCTA,fl_rounds_actual,optimizer,learning_rate
-organmnist_axial,practical_noniid,fedavg,20k (~20k),20299,0.077,148.7,60.2,3614.3,0.7272,0.7272,80,sgd,0.01
-organmnist_axial,practical_noniid,fedavg,570k (~570k),571707,2.181,4187.3,48.7,2924.9,0.8184,0.8184,80,sgd,0.01
+dataset,partition_method,strategy,model,num_params,model_size_mb,total_comm_mb,total_time_min,total_time_s,BTA,fl_rounds_actual,optimizer,learning_rate
+organmnist_axial,practical_noniid,fedavg,20k (~20k),20299,0.077,148.7,60.2,3614.3,0.7272,80,sgd,0.01
+organmnist_axial,practical_noniid,fedavg,570k (~570k),571707,2.181,4187.3,48.7,2924.9,0.8184,80,sgd,0.01
