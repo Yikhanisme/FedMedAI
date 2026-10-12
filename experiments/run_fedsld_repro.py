@@ -80,10 +80,11 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
     partition = load_partition(str(json_file))
 
     # Model
+    in_channels = train_ds[0][0].shape[0]
     if model_type == "570k":
-        net = CNN570K(in_channels=3, num_classes=num_classes).to(device)
+        net = CNN570K(in_channels=in_channels, num_classes=num_classes).to(device)
     else:
-        net = SimpleCNN(in_channels=3, num_classes=num_classes).to(device)
+        net = SimpleCNN(in_channels=in_channels, num_classes=num_classes).to(device)
     init_params = fl.common.ndarrays_to_parameters(get_parameters(net))
 
     # Strategy
@@ -168,6 +169,7 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
         if not isinstance(e.__cause__, EarlyStopException):
             raise
 
+    total_time = round(time.time() - t0, 1)
     num_params = sum(p.numel() for p in net.parameters())
     model_size_mb = round(num_params * 4 / (1024 * 1024), 3)
     # Tổng băng thông truyền thông FL (upload + download) cho tất cả clients qua các rounds
@@ -241,7 +243,7 @@ def main():
         if r:
             all_results.append(r)
 
-    # Xuất CSV tổng hợp
+    # Xuất / Cập nhật CSV tổng hợp theo cấu trúc cặp kịch bản dễ nhìn
     if all_results:
         keys = [
             "dataset", "partition_method", "strategy", "model",
@@ -249,12 +251,53 @@ def main():
             "total_time_min", "total_time_s",
             "BTA", "fl_rounds_actual", "optimizer", "learning_rate"
         ]
-        file_exists = csv_path.exists()
-        with open(csv_path, "a" if file_exists else "w", newline="", encoding="utf-8") as f:
+        csv_path = RESULTS_DIR / "comparison_table_fedsld.csv"
+
+        rows = []
+        if csv_path.exists():
+            with open(csv_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+        row_map = {}
+        for r in rows:
+            k = (r.get("dataset"), r.get("partition_method"), r.get("strategy"), r.get("model"))
+            row_map[k] = r
+
+        for nr in all_results:
+            k = (nr.get("dataset"), nr.get("partition_method"), nr.get("strategy"), nr.get("model"))
+            row_map[k] = {col: str(nr.get(col, "-")) for col in keys}
+
+        # Sắp xếp theo thứ tự: OrganMNIST (20k rồi 570k) -> PathMNIST (20k rồi 570k)
+        datasets = ["organmnist_axial", "pathmnist"]
+        final_rows = []
+        divider = {col: "" for col in keys}
+
+        for d in datasets:
+            d_rows = [v for k, v in row_map.items() if k[0] == d]
+            if not d_rows:
+                continue
+            rows_20k = [r for r in d_rows if "20k" in str(r.get("model", "")).lower()]
+            rows_570k = [r for r in d_rows if "570k" in str(r.get("model", "")).lower()]
+
+            def sub_sort(r):
+                p = 0 if "practical" in str(r.get("partition_method", "")).lower() else 1
+                s = 0 if "fedavg" in str(r.get("strategy", "")).lower() else 1
+                return (p, s)
+
+            rows_20k.sort(key=sub_sort)
+            rows_570k.sort(key=sub_sort)
+
+            if final_rows:
+                final_rows.append(divider)
+            final_rows.extend(rows_20k)
+            final_rows.append(divider)
+            final_rows.extend(rows_570k)
+
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-            if not file_exists:
-                w.writeheader()
-            w.writerows(all_results)
+            w.writeheader()
+            w.writerows(final_rows)
         print(f"\n  [CSV EXPORT] -> {csv_path}")
 
 

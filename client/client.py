@@ -43,10 +43,11 @@ def make_client_fn(train_dataset, val_dataset, test_dataset,
         test_loader  = DataLoader(test_dataset, batch_size=batch_size,
                                   shuffle=False, num_workers=0)
 
+        in_channels = train_dataset[0][0].shape[0]
         if model_type == "570k":
-            net = CNN570K(in_channels=3, num_classes=num_classes).to(device)
+            net = CNN570K(in_channels=in_channels, num_classes=num_classes).to(device)
         else:
-            net = SimpleCNN(in_channels=3, num_classes=num_classes).to(device)
+            net = SimpleCNN(in_channels=in_channels, num_classes=num_classes).to(device)
 
         return FlowerClient(
             net=net,
@@ -191,10 +192,11 @@ def make_fedbn_client_fn(train_dataset, val_dataset, test_dataset,
                                   shuffle=False, num_workers=0)
         test_loader  = DataLoader(test_dataset, batch_size=batch_size,
                                   shuffle=False, num_workers=0)
+        in_channels = train_dataset[0][0].shape[0]
         if model_type == "570k":
-            net = CNN570K(in_channels=3, num_classes=num_classes).to(device)
+            net = CNN570K(in_channels=in_channels, num_classes=num_classes).to(device)
         else:
-            net = SimpleCNN(in_channels=3, num_classes=num_classes).to(device)
+            net = SimpleCNN(in_channels=in_channels, num_classes=num_classes).to(device)
         return FedBNFlowerClient(
             net=net,
             train_loader=train_loader,

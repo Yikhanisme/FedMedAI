@@ -70,8 +70,7 @@ def get_organmnist_datasets(download: bool = True):
     DataClass = getattr(_medmnist, info['python_class'])
     transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),  # 1-ch → 3-ch
-        transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
+        transforms.Normalize(mean=[.5], std=[.5])
     ])
     train_ds = DataClass(split='train', transform=transform, download=download)
     val_ds   = DataClass(split='val',   transform=transform, download=download)
