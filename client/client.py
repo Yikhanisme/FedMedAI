@@ -10,7 +10,7 @@ from client.evaluate import evaluate
 from models.cnn import get_parameters_fedbn, set_parameters_fedbn
 
 
-def _make_optimizer(net, optimizer_type, lr, momentum=0.9, weight_decay=1e-4):
+def _make_optimizer(net, optimizer_type, lr, momentum=0.0, weight_decay=0.0):
     """Khởi tạo optimizer: SGD (theo FedSLD paper) hoặc Adam (theo BloodMNIST)."""
     if optimizer_type == "sgd":
         return torch.optim.SGD(
@@ -25,7 +25,7 @@ def _make_optimizer(net, optimizer_type, lr, momentum=0.9, weight_decay=1e-4):
 def make_client_fn(train_dataset, val_dataset, test_dataset,
                    partition, local_epochs, lr, device,
                    num_classes=8, batch_size=32,
-                   optimizer_type="adam", momentum=0.9,
+                   optimizer_type="adam", momentum=0.0, weight_decay=0.0,
                    model_type="20k"):
     """
     Factory function: trả về hàm client_fn dùng cho Flower Simulation.
@@ -59,6 +59,7 @@ def make_client_fn(train_dataset, val_dataset, test_dataset,
             device=device,
             optimizer_type=optimizer_type,
             momentum=momentum,
+            weight_decay=weight_decay,
         ).to_client()
 
     return client_fn
@@ -67,7 +68,7 @@ def make_client_fn(train_dataset, val_dataset, test_dataset,
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, net, train_loader, val_loader,
                  test_loader, local_epochs, lr, device,
-                 optimizer_type="adam", momentum=0.9):
+                 optimizer_type="adam", momentum=0.0, weight_decay=0.0):
         self.net            = net
         self.train_loader   = train_loader
         self.val_loader     = val_loader
@@ -77,6 +78,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.device         = device
         self.optimizer_type = optimizer_type
         self.momentum       = momentum
+        self.weight_decay   = weight_decay
 
     def get_parameters(self, config):
         return get_parameters(self.net)
@@ -94,7 +96,7 @@ class FlowerClient(fl.client.NumPyClient):
             global_params = [p.detach().clone() for p in self.net.parameters()]
 
         optimizer = _make_optimizer(self.net, self.optimizer_type,
-                                    current_lr, self.momentum)
+                                    current_lr, self.momentum, self.weight_decay)
         metrics = train(
             model=self.net,
             train_loader=self.train_loader,
@@ -126,7 +128,7 @@ class FedBNFlowerClient(fl.client.NumPyClient):
     """
     def __init__(self, net, train_loader, val_loader,
                  test_loader, local_epochs, lr, device,
-                 optimizer_type="adam", momentum=0.9):
+                 optimizer_type="adam", momentum=0.0, weight_decay=0.0):
         self.net            = net
         self.train_loader   = train_loader
         self.val_loader     = val_loader
@@ -136,6 +138,7 @@ class FedBNFlowerClient(fl.client.NumPyClient):
         self.device         = device
         self.optimizer_type = optimizer_type
         self.momentum       = momentum
+        self.weight_decay   = weight_decay
 
     def get_parameters(self, config):
         return get_parameters_fedbn(self.net)   # Bỏ BN params
@@ -151,7 +154,7 @@ class FedBNFlowerClient(fl.client.NumPyClient):
             global_params = [p.detach().clone() for p in self.net.parameters()]
 
         optimizer = _make_optimizer(self.net, self.optimizer_type,
-                                    current_lr, self.momentum)
+                                    current_lr, self.momentum, self.weight_decay)
         train(
             model=self.net,
             train_loader=self.train_loader,
@@ -178,7 +181,7 @@ class FedBNFlowerClient(fl.client.NumPyClient):
 def make_fedbn_client_fn(train_dataset, val_dataset, test_dataset,
                          partition, local_epochs, lr, device,
                          num_classes=8, batch_size=32,
-                         optimizer_type="adam", momentum=0.9,
+                         optimizer_type="adam", momentum=0.0, weight_decay=0.0,
                          model_type="20k"):
     """Factory function cho FedBN — tương tự make_client_fn."""
     from torch.utils.data import DataLoader, Subset
@@ -207,6 +210,7 @@ def make_fedbn_client_fn(train_dataset, val_dataset, test_dataset,
             device=device,
             optimizer_type=optimizer_type,
             momentum=momentum,
+            weight_decay=weight_decay,
         ).to_client()
 
     return client_fn

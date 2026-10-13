@@ -4,7 +4,7 @@ organmnist_axial,practical_noniid,fedprox,20k (~20k),20011,0.076,-,-,-,-,-,sgd,0
 organmnist_axial,pathological_noniid,fedavg,20k (~20k),20011,0.076,-,-,-,-,-,sgd,0.01
 organmnist_axial,pathological_noniid,fedprox,20k (~20k),20011,0.076,-,-,-,-,-,sgd,0.01
 ,,,,,,,,,,,,
-organmnist_axial,practical_noniid,fedavg,570k (~570k),570107,2.175,4175.6,45.2,2711.5,0.8399,80,sgd,0.01
+organmnist_axial,practical_noniid,fedavg,570k (~570k),570107,2.175,4175.6,46.1,2766.3,0.8256,80,sgd,0.01
 organmnist_axial,practical_noniid,fedprox,570k (~570k),570107,2.175,-,-,-,-,-,sgd,0.01
 organmnist_axial,pathological_noniid,fedavg,570k (~570k),570107,2.175,-,-,-,-,-,sgd,0.01
 organmnist_axial,pathological_noniid,fedprox,570k (~570k),570107,2.175,-,-,-,-,-,sgd,0.01

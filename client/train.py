@@ -110,7 +110,6 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
             old_lr = optimizer.param_groups[0]['lr']
             scheduler.step(val_epoch_loss)
             new_lr = optimizer.param_groups[0]['lr']
-            
             if new_lr < old_lr:
                 print(f"   Val loss did not improve, reducing LR to {new_lr}")
                 

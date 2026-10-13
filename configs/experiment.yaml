@@ -109,6 +109,7 @@ fedsld_setup:
   learning_rate: 0.01
   momentum: 0.9
   weight_decay: 0.0001
+  proximal_mu: 0.01
   partition_settings:
     practical_noniid:
       fl_rounds: 80

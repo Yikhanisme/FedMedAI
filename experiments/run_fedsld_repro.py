@@ -88,7 +88,8 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
     init_params = fl.common.ndarrays_to_parameters(get_parameters(net))
 
     # Strategy
-    strategy = get_strategy(strategy_name, FS["num_clients"], init_params)
+    strategy = get_strategy(strategy_name, FS["num_clients"], init_params,
+                            proximal_mu=float(FS.get("proximal_mu", 0.01)))
 
     # Client factory (chọn make_fedbn_client_fn nếu strategy là fedbn)
     client_fn_maker = make_fedbn_client_fn if strategy_name == "fedbn" else make_client_fn
@@ -103,7 +104,8 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
         num_classes=num_classes,
         batch_size=FS["batch_size"],
         optimizer_type=FS["optimizer"],
-        momentum=FS["momentum"],
+        momentum=FS.get("momentum", 0.0),
+        weight_decay=FS.get("weight_decay", 0.0),
         model_type=model_type,
     )
 
@@ -146,7 +148,7 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
             f1  = metrics_agg.get("f1_score",  0.0)
             print(f"  [Round {server_round:3d}/{num_rounds}] "
                   f"BTA={bta:.4f} "
-                  f"Pre={pre:.4f} Rec={rec:.4f} F1={f1:.4f} ({t:.1f}s)")
+                  f"Pre={pre:.4f} Rec={rec:.4f} F1={f1:.4f} ({t:.1f}s)", flush=True)
 
             if early_stopper and not early_stopper.update(server_round, bta):
                 raise EarlyStopException()
@@ -154,7 +156,14 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
         return agg
 
     strategy.aggregate_evaluate = agg_with_tracking
-    strategy.on_fit_config_fn   = lambda _: {"lr": FS["learning_rate"]}
+
+    def fit_config_fn(server_round: int):
+        cfg = {"lr": FS["learning_rate"]}
+        if strategy_name == "fedprox":
+            cfg["proximal_mu"] = float(FS.get("proximal_mu", 0.01))
+        return cfg
+
+    strategy.on_fit_config_fn = fit_config_fn
 
     t0 = time.time()
     try:
@@ -209,96 +218,126 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
     with open(out_dir / "results.json", "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
 
+    # Cập nhật CSV tổng hợp ngay lập tức sau mỗi lần chạy
+    update_comparison_csv(result)
+
     print(f"\n  [COMPLETED] -> BTA = {result['BTA']:.4f}")
     print(f"  [SAVED]     -> {out_dir / 'results.json'}")
     return result
+
+
+def get_csv_key(row):
+    ds = str(row.get("dataset", "")).strip()
+    pt = str(row.get("partition_method", "")).strip()
+    st = str(row.get("strategy", "")).strip()
+    md_str = str(row.get("model", "")).lower()
+    md = "570k" if "570k" in md_str else "20k"
+    return (ds, pt, st, md)
+
+
+def update_comparison_csv(new_results):
+    """Cập nhật kết quả vào comparison_table_fedsld.csv ngay sau mỗi scenario."""
+    if not new_results:
+        return
+    if not isinstance(new_results, list):
+        new_results = [new_results]
+
+    keys = [
+        "dataset", "partition_method", "strategy", "model",
+        "num_params", "model_size_mb", "total_comm_mb",
+        "total_time_min", "total_time_s",
+        "BTA", "fl_rounds_actual", "optimizer", "learning_rate"
+    ]
+    csv_path = RESULTS_DIR / "comparison_table_fedsld.csv"
+
+    rows = []
+    if csv_path.exists():
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = [r for r in reader if r.get("dataset")]
+
+    row_map = {get_csv_key(r): r for r in rows}
+
+    for nr in new_results:
+        k = get_csv_key(nr)
+        row_map[k] = {col: str(nr.get(col, "-")) for col in keys}
+
+    # Sắp xếp theo thứ tự: OrganMNIST (20k rồi 570k) -> PathMNIST (20k rồi 570k)
+    datasets = ["organmnist_axial", "pathmnist"]
+    final_rows = []
+    divider = {col: "" for col in keys}
+
+    for d in datasets:
+        d_rows = [v for k, v in row_map.items() if k[0] == d]
+        if not d_rows:
+            continue
+        rows_20k = [r for r in d_rows if "20k" in str(r.get("model", "")).lower()]
+        rows_570k = [r for r in d_rows if "570k" in str(r.get("model", "")).lower()]
+
+        def sub_sort(r):
+            p = 0 if "practical" in str(r.get("partition_method", "")).lower() else 1
+            s = 0 if "fedavg" in str(r.get("strategy", "")).lower() else 1
+            return (p, s)
+
+        rows_20k.sort(key=sub_sort)
+        rows_570k.sort(key=sub_sort)
+
+        if final_rows:
+            final_rows.append(divider)
+        final_rows.extend(rows_20k)
+        final_rows.append(divider)
+        final_rows.extend(rows_570k)
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(final_rows)
+    print(f"\n  [CSV UPDATED] -> {csv_path}", flush=True)
 
 
 def main():
     valid_strategies = list(set(FS.get("fl_strategies", ["fedavg", "fedprox"]) + ["fedbn"]))
 
     parser = argparse.ArgumentParser(description="FedSLD Reproduction Simulation")
-    parser.add_argument("--dataset",   choices=list(DATASET_FNS.keys()), default="organmnist_axial")
-    parser.add_argument("--partition", choices=["practical_noniid", "pathological_noniid"], default="practical_noniid")
-    parser.add_argument("--strategy",  choices=valid_strategies, default="fedavg")
-    parser.add_argument("--model",     choices=["20k", "570k"], default="20k", help="Model architecture: 20k (ours) or 570k (FedSLD paper)")
-    parser.add_argument("--all",       action="store_true", help="Run all experiment scenarios")
+    parser.add_argument("--dataset",        choices=list(DATASET_FNS.keys()), default="organmnist_axial")
+    parser.add_argument("--partition",      choices=["practical_noniid", "pathological_noniid"], default="practical_noniid")
+    parser.add_argument("--strategy",       choices=valid_strategies, default="fedavg")
+    parser.add_argument("--model",          choices=["20k", "570k"], default="20k", help="Model architecture: 20k (ours) or 570k (FedSLD paper)")
+    parser.add_argument("--all",            action="store_true", help="Run all experiment scenarios")
+    parser.add_argument("--practical_570k", action="store_true", help="Run all 4 practical non-IID scenarios for 570K model (OrganMNIST + PathMNIST x FedAvg + FedProx)")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Executing on device: {device}")
 
-    all_results = []
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    if args.all:
+    if args.practical_570k:
+        print("\n" + "="*70)
+        print("  BATCH RUN: 4 PRACTICAL NON-IID SCENARIOS (570K PARAMS, 80 ROUNDS)")
+        print("  1. OrganMNIST-Axial + Practical Non-IID + FedAvg  + 570K (80 rounds)")
+        print("  2. OrganMNIST-Axial + Practical Non-IID + FedProx + 570K (80 rounds)")
+        print("  3. PathMNIST        + Practical Non-IID + FedAvg  + 570K (80 rounds)")
+        print("  4. PathMNIST        + Practical Non-IID + FedProx + 570K (80 rounds)")
+        print("="*70 + "\n")
+        scenarios = [
+            ("organmnist_axial", "practical_noniid", "fedavg",  "570k"),
+            ("organmnist_axial", "practical_noniid", "fedprox", "570k"),
+            ("pathmnist",        "practical_noniid", "fedavg",  "570k"),
+            ("pathmnist",        "practical_noniid", "fedprox", "570k"),
+        ]
+        for idx, (ds, pt, st, md) in enumerate(scenarios, 1):
+            print(f"\n>>> [SCENARIO {idx}/4] STARTING: {ds.upper()} | {pt} | {st.upper()} | {md.upper()} ...", flush=True)
+            run_one(ds, pt, st, device, model_type=md)
+            print(f">>> [SCENARIO {idx}/4] FINISHED: {ds.upper()} | {pt} | {st.upper()} | {md.upper()}\n", flush=True)
+
+    elif args.all:
         for ds in list(DATASET_FNS.keys()):
             for pt in ["practical_noniid", "pathological_noniid"]:
                 for st in FS.get("fl_strategies", ["fedavg", "fedprox"]):
-                    r = run_one(ds, pt, st, device, model_type=args.model)
-                    if r:
-                        all_results.append(r)
+                    run_one(ds, pt, st, device, model_type=args.model)
     else:
-        r = run_one(args.dataset, args.partition, args.strategy, device, model_type=args.model)
-        if r:
-            all_results.append(r)
-
-    # Xuất / Cập nhật CSV tổng hợp theo cấu trúc cặp kịch bản dễ nhìn
-    if all_results:
-        keys = [
-            "dataset", "partition_method", "strategy", "model",
-            "num_params", "model_size_mb", "total_comm_mb",
-            "total_time_min", "total_time_s",
-            "BTA", "fl_rounds_actual", "optimizer", "learning_rate"
-        ]
-        csv_path = RESULTS_DIR / "comparison_table_fedsld.csv"
-
-        rows = []
-        if csv_path.exists():
-            with open(csv_path, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                rows = list(reader)
-
-        row_map = {}
-        for r in rows:
-            k = (r.get("dataset"), r.get("partition_method"), r.get("strategy"), r.get("model"))
-            row_map[k] = r
-
-        for nr in all_results:
-            k = (nr.get("dataset"), nr.get("partition_method"), nr.get("strategy"), nr.get("model"))
-            row_map[k] = {col: str(nr.get(col, "-")) for col in keys}
-
-        # Sắp xếp theo thứ tự: OrganMNIST (20k rồi 570k) -> PathMNIST (20k rồi 570k)
-        datasets = ["organmnist_axial", "pathmnist"]
-        final_rows = []
-        divider = {col: "" for col in keys}
-
-        for d in datasets:
-            d_rows = [v for k, v in row_map.items() if k[0] == d]
-            if not d_rows:
-                continue
-            rows_20k = [r for r in d_rows if "20k" in str(r.get("model", "")).lower()]
-            rows_570k = [r for r in d_rows if "570k" in str(r.get("model", "")).lower()]
-
-            def sub_sort(r):
-                p = 0 if "practical" in str(r.get("partition_method", "")).lower() else 1
-                s = 0 if "fedavg" in str(r.get("strategy", "")).lower() else 1
-                return (p, s)
-
-            rows_20k.sort(key=sub_sort)
-            rows_570k.sort(key=sub_sort)
-
-            if final_rows:
-                final_rows.append(divider)
-            final_rows.extend(rows_20k)
-            final_rows.append(divider)
-            final_rows.extend(rows_570k)
-
-        with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-            w.writeheader()
-            w.writerows(final_rows)
-        print(f"\n  [CSV EXPORT] -> {csv_path}")
+        run_one(args.dataset, args.partition, args.strategy, device, model_type=args.model)
 
 
 if __name__ == "__main__":
