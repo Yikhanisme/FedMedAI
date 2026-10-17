@@ -103,7 +103,7 @@ class FlowerClient(fl.client.NumPyClient):
             optimizer=optimizer,
             epochs=self.local_epochs,
             device=self.device,
-            val_loader=self.val_loader,
+            val_loader=None,
             proximal_mu=proximal_mu,
             global_params=global_params,
         )
@@ -161,7 +161,7 @@ class FedBNFlowerClient(fl.client.NumPyClient):
             optimizer=optimizer,
             epochs=self.local_epochs,
             device=self.device,
-            val_loader=self.val_loader,
+            val_loader=None,
             proximal_mu=proximal_mu,
             global_params=global_params,
         )

@@ -54,7 +54,7 @@ class EarlyStopException(Exception):
     pass
 
 
-def run_one(dataset_name, partition_method, strategy_name, device, model_type="20k"):
+def run_one(dataset_name, partition_method, strategy_name, device, model_type="20k", run_id=1):
     get_fn, num_classes = DATASET_FNS[dataset_name]
     num_rounds = FS["partition_settings"][partition_method]["fl_rounds"]
 
@@ -64,6 +64,7 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
     print(f"  PARTITION: {partition_method}")
     print(f"  STRATEGY : {strategy_name.upper()}")
     print(f"  MODEL    : {model_type.upper()} ({model_label})")
+    print(f"  RUN      : {run_id}/3 (Seed 42)")
     print(f"  CLIENTS  : {FS['num_clients']} | BATCH SIZE: {FS['batch_size']}")
     print(f"  ROUNDS   : {num_rounds} | LR: {FS['learning_rate']} ({FS['optimizer'].upper()})")
     print(f"{'='*65}")
@@ -167,12 +168,21 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
 
     t0 = time.time()
     try:
+        # Tối ưu hóa tài nguyên cho từng dataset:
+        # - OrganMNIST (nhẹ: 34k ảnh 1 kênh): num_gpus=0 để Ray chạy song song đa tiến trình (~30s/round).
+        # - PathMNIST (90k ảnh 3 kênh): num_gpus=0.5 (chạy 2 client song song trên GPU 8GB, 86s/round, ổn định 100%).
+        if dataset_name == "organmnist_axial":
+            client_res = {"num_cpus": 2, "num_gpus": 0}
+        else:
+            gpu_res = 0.5 if device.type == "cuda" else 0.0
+            client_res = {"num_cpus": 2, "num_gpus": gpu_res}
+
         fl.simulation.start_simulation(
             client_fn=client_fn,
             num_clients=FS["num_clients"],
             config=fl.server.ServerConfig(num_rounds=num_rounds),
             strategy=strategy,
-            client_resources={"num_cpus": 2, "num_gpus": 0},
+            client_resources=client_res,
         )
     except Exception as e:
         if not isinstance(e.__cause__, EarlyStopException):
@@ -191,6 +201,7 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
         "partition_method":  partition_method,
         "strategy":          strategy_name,
         "model":             f"{model_type} ({'~570k' if model_type == '570k' else '~20k'})",
+        "run":               run_id,
         "num_params":        num_params,
         "model_size_mb":     model_size_mb,
         "total_comm_mb":     total_comm_mb,
@@ -212,7 +223,7 @@ def run_one(dataset_name, partition_method, strategy_name, device, model_type="2
     }
 
     # Lưu kết quả ra file JSON
-    run_name = f"{dataset_name}_{partition_method}_{strategy_name}_model{model_type}"
+    run_name = f"{dataset_name}_{partition_method}_{strategy_name}_model{model_type}_run{run_id}"
     out_dir  = RESULTS_DIR / run_name
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(out_dir / "results.json", "w", encoding="utf-8") as f:
@@ -232,18 +243,22 @@ def get_csv_key(row):
     st = str(row.get("strategy", "")).strip()
     md_str = str(row.get("model", "")).lower()
     md = "570k" if "570k" in md_str else "20k"
-    return (ds, pt, st, md)
+    try:
+        run_id = int(row.get("run", 1))
+    except (ValueError, TypeError):
+        run_id = 1
+    return (ds, pt, st, md, run_id)
 
 
 def update_comparison_csv(new_results):
-    """Cập nhật kết quả vào comparison_table_fedsld.csv ngay sau mỗi scenario."""
+    """Cập nhật kết quả vào comparison_table_fedsld.csv ngay sau mỗi scenario (lưu 3 runs cho 570k practical)."""
     if not new_results:
         return
     if not isinstance(new_results, list):
         new_results = [new_results]
 
     keys = [
-        "dataset", "partition_method", "strategy", "model",
+        "dataset", "partition_method", "strategy", "model", "run",
         "num_params", "model_size_mb", "total_comm_mb",
         "total_time_min", "total_time_s",
         "BTA", "fl_rounds_actual", "optimizer", "learning_rate"
@@ -262,31 +277,37 @@ def update_comparison_csv(new_results):
         k = get_csv_key(nr)
         row_map[k] = {col: str(nr.get(col, "-")) for col in keys}
 
-    # Sắp xếp theo thứ tự: OrganMNIST (20k rồi 570k) -> PathMNIST (20k rồi 570k)
-    datasets = ["organmnist_axial", "pathmnist"]
+    # 12 cấu hình: 2 dataset x 2 strategy x 3 runs (đều practical 570k)
+    target_configs = []
+    for ds in ["organmnist_axial", "pathmnist"]:
+        for st in ["fedavg", "fedprox"]:
+            for r in [1, 2, 3]:
+                target_configs.append((ds, "practical_noniid", st, "570k", r))
+
     final_rows = []
-    divider = {col: "" for col in keys}
-
-    for d in datasets:
-        d_rows = [v for k, v in row_map.items() if k[0] == d]
-        if not d_rows:
-            continue
-        rows_20k = [r for r in d_rows if "20k" in str(r.get("model", "")).lower()]
-        rows_570k = [r for r in d_rows if "570k" in str(r.get("model", "")).lower()]
-
-        def sub_sort(r):
-            p = 0 if "practical" in str(r.get("partition_method", "")).lower() else 1
-            s = 0 if "fedavg" in str(r.get("strategy", "")).lower() else 1
-            return (p, s)
-
-        rows_20k.sort(key=sub_sort)
-        rows_570k.sort(key=sub_sort)
-
-        if final_rows:
-            final_rows.append(divider)
-        final_rows.extend(rows_20k)
-        final_rows.append(divider)
-        final_rows.extend(rows_570k)
+    for (ds, pt, st, md, r) in target_configs:
+        k = (ds, pt, st, md, r)
+        if k in row_map:
+            final_rows.append(row_map[k])
+        else:
+            num_params = 570107 if ds == "organmnist_axial" else 570705
+            model_size = 2.175 if ds == "organmnist_axial" else 2.177
+            final_rows.append({
+                "dataset": ds,
+                "partition_method": pt,
+                "strategy": st,
+                "model": "570k (~570k)",
+                "run": str(r),
+                "num_params": num_params,
+                "model_size_mb": model_size,
+                "total_comm_mb": "-",
+                "total_time_min": "-",
+                "total_time_s": "-",
+                "BTA": "-",
+                "fl_rounds_actual": "-",
+                "optimizer": "sgd",
+                "learning_rate": "0.01",
+            })
 
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
@@ -303,16 +324,56 @@ def main():
     parser.add_argument("--partition",      choices=["practical_noniid", "pathological_noniid"], default="practical_noniid")
     parser.add_argument("--strategy",       choices=valid_strategies, default="fedavg")
     parser.add_argument("--model",          choices=["20k", "570k"], default="20k", help="Model architecture: 20k (ours) or 570k (FedSLD paper)")
+    parser.add_argument("--run_id",         type=int, default=1, choices=[1, 2, 3], help="Run iteration (1, 2, or 3, default: 1)")
+    parser.add_argument("--runs",           nargs="+", type=int, default=None, help="List of run IDs to execute, e.g. --runs 2 3")
+    parser.add_argument("--all_runs",       action="store_true", help="Run all 3 runs (run 1, 2, 3) sequentially")
     parser.add_argument("--all",            action="store_true", help="Run all experiment scenarios")
     parser.add_argument("--practical_570k", action="store_true", help="Run all 4 practical non-IID scenarios for 570K model (OrganMNIST + PathMNIST x FedAvg + FedProx)")
+    parser.add_argument("--all_570k",       action="store_true", help="Run all 8 scenarios for 570K model (Practical 80 rds + Pathological 160 rds)")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Executing on device: {device}")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    if args.runs:
+        runs_to_exec = args.runs
+    elif args.all_runs:
+        runs_to_exec = [1, 2, 3]
+    else:
+        runs_to_exec = [args.run_id]
 
-    if args.practical_570k:
+    if args.all_570k:
+        print("\n" + "="*70)
+        print("  BATCH RUN: ALL 8 SCENARIOS (570K PARAMS)")
+        print("  Part 1: Practical Non-IID (80 rounds each)")
+        print("    1. OrganMNIST-Axial + Practical Non-IID + FedAvg  + 570K")
+        print("    2. OrganMNIST-Axial + Practical Non-IID + FedProx + 570K")
+        print("    3. PathMNIST        + Practical Non-IID + FedAvg  + 570K")
+        print("    4. PathMNIST        + Practical Non-IID + FedProx + 570K")
+        print("  Part 2: Pathological Non-IID (160 rounds each)")
+        print("    5. OrganMNIST-Axial + Pathological Non-IID + FedAvg  + 570K")
+        print("    6. OrganMNIST-Axial + Pathological Non-IID + FedProx + 570K")
+        print("    7. PathMNIST        + Pathological Non-IID + FedAvg  + 570K")
+        print("    8. PathMNIST        + Pathological Non-IID + FedProx + 570K")
+        print("="*70 + "\n")
+        scenarios = [
+            ("organmnist_axial", "practical_noniid",    "fedavg",  "570k"),
+            ("organmnist_axial", "practical_noniid",    "fedprox", "570k"),
+            ("pathmnist",        "practical_noniid",    "fedavg",  "570k"),
+            ("pathmnist",        "practical_noniid",    "fedprox", "570k"),
+            ("organmnist_axial", "pathological_noniid", "fedavg",  "570k"),
+            ("organmnist_axial", "pathological_noniid", "fedprox", "570k"),
+            ("pathmnist",        "pathological_noniid", "fedavg",  "570k"),
+            ("pathmnist",        "pathological_noniid", "fedprox", "570k"),
+        ]
+        for idx, (ds, pt, st, md) in enumerate(scenarios, 1):
+            for r in runs_to_exec:
+                print(f"\n>>> [SCENARIO {idx}/8 | RUN {r}/3] STARTING: {ds.upper()} | {pt} | {st.upper()} | {md.upper()} ...", flush=True)
+                run_one(ds, pt, st, device, model_type=md, run_id=r)
+                print(f">>> [SCENARIO {idx}/8 | RUN {r}/3] FINISHED: {ds.upper()} | {pt} | {st.upper()} | {md.upper()}\n", flush=True)
+
+    elif args.practical_570k:
         print("\n" + "="*70)
         print("  BATCH RUN: 4 PRACTICAL NON-IID SCENARIOS (570K PARAMS, 80 ROUNDS)")
         print("  1. OrganMNIST-Axial + Practical Non-IID + FedAvg  + 570K (80 rounds)")
@@ -327,17 +388,20 @@ def main():
             ("pathmnist",        "practical_noniid", "fedprox", "570k"),
         ]
         for idx, (ds, pt, st, md) in enumerate(scenarios, 1):
-            print(f"\n>>> [SCENARIO {idx}/4] STARTING: {ds.upper()} | {pt} | {st.upper()} | {md.upper()} ...", flush=True)
-            run_one(ds, pt, st, device, model_type=md)
-            print(f">>> [SCENARIO {idx}/4] FINISHED: {ds.upper()} | {pt} | {st.upper()} | {md.upper()}\n", flush=True)
+            for r in runs_to_exec:
+                print(f"\n>>> [SCENARIO {idx}/4 | RUN {r}/3] STARTING: {ds.upper()} | {pt} | {st.upper()} | {md.upper()} ...", flush=True)
+                run_one(ds, pt, st, device, model_type=md, run_id=r)
+                print(f">>> [SCENARIO {idx}/4 | RUN {r}/3] FINISHED: {ds.upper()} | {pt} | {st.upper()} | {md.upper()}\n", flush=True)
 
     elif args.all:
         for ds in list(DATASET_FNS.keys()):
             for pt in ["practical_noniid", "pathological_noniid"]:
                 for st in FS.get("fl_strategies", ["fedavg", "fedprox"]):
-                    run_one(ds, pt, st, device, model_type=args.model)
+                    for r in runs_to_exec:
+                        run_one(ds, pt, st, device, model_type=args.model, run_id=r)
     else:
-        run_one(args.dataset, args.partition, args.strategy, device, model_type=args.model)
+        for r in runs_to_exec:
+            run_one(args.dataset, args.partition, args.strategy, device, model_type=args.model, run_id=r)
 
 
 if __name__ == "__main__":

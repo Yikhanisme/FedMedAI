@@ -8,18 +8,15 @@ import copy
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_lr: float = 1e-6,
-          proximal_mu: float = 0.0, global_params: list = None):
+          proximal_mu: float = 0.1, global_params: list = None):
 
     criterion = nn.CrossEntropyLoss()
     model.train()
 
     start_time = time.time()
 
-    # 1. Khởi tạo Learning Rate Scheduler
-    # - factor=0.5: giảm LR xuống còn 1/2 khi Val Loss không cải thiện
-    # - patience=3: chờ 3 epoch trước khi giảm LR
-    # - min_lr: ngưỡng sàn, LR sẽ không bao giờ giảm xuống dưới giá trị này
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, min_lr=min_lr)
+    # 1. Khởi tạo Learning Rate Scheduler (Commented out theo yêu cầu)
+    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, min_lr=min_lr)
     
     # 2. Khai báo biến cho Early Stopping
     best_loss = float('inf')
@@ -107,11 +104,11 @@ def train(model, train_loader, optimizer, epochs, device, val_loader=None, min_l
             print(print_str)
             
             
-            old_lr = optimizer.param_groups[0]['lr']
-            scheduler.step(val_epoch_loss)
-            new_lr = optimizer.param_groups[0]['lr']
-            if new_lr < old_lr:
-                print(f"   Val loss did not improve, reducing LR to {new_lr}")
+            # old_lr = optimizer.param_groups[0]['lr']
+            # scheduler.step(val_epoch_loss)
+            # new_lr = optimizer.param_groups[0]['lr']
+            # if new_lr < old_lr:
+            #     print(f"   Val loss did not improve, reducing LR to {new_lr}")
                 
                 
             # --- ÁP DỤNG EARLY STOPPING DỰA TRÊN VAL LOSS ---
